@@ -97,9 +97,10 @@ class InformationWriter(HookBase):
         self.trainer.comm_info["iter_info"] = ""
         self.curr_iter = self.trainer.start_epoch * len(self.trainer.train_loader)
         if self.trainer.writer is not None and self.trainer.cfg.enable_wandb:
-            wandb.define_metric("params/*", step_metric="global_step")
-            wandb.define_metric("train_batch/*", step_metric="global_step")
-            wandb.define_metric("train/*", step_metric="epoch")
+            # Match PointCept naming conventions.
+            wandb.define_metric("params/*", step_metric="Iter")
+            wandb.define_metric("train_batch/*", step_metric="Iter")
+            wandb.define_metric("train/*", step_metric="Epoch")
 
     def before_step(self):
         self.curr_iter += 1
@@ -173,22 +174,21 @@ class InformationWriter(HookBase):
                     self.curr_iter,
                 )
             if self.trainer.cfg.enable_wandb:
-
+                wandb.log({"Iter": self.curr_iter, "params/lr": lr}, step=self.curr_iter)
                 wandb.log(
-                    {"global_step": self.curr_iter, 
-                     "params/lr": lr,
-                     "params/norm": self.compute_total_grad_norm(self.trainer.model.parameters(), norm_type=2.0),
-                    #  "params/mask_size": self.trainer.model.module.mask_size,
-                    #  "params/mask_ratio": self.trainer.model.module.mask_ratio,
-                    #  "params/teacher_temp": self.trainer.model.module.teacher_temp,
-                    #  "params/ema_momentum": self.trainer.model.module.momentum,
-                    #  "params/weight_decay": self.trainer.optimizer.state_dict()["param_groups"][0]["weight_decay"]
-                     }, step=self.curr_iter
+                    {   "global_step": self.curr_iter, 
+                        "params/lr": lr,
+                        "Iter": self.curr_iter,
+                        "params/norm": self.compute_total_grad_norm(
+                            self.trainer.model.parameters(), norm_type=2.0
+                        ),
+                    },
+                    step=wandb.run.step,
                 )
                 for key in self.model_output_keys:
                     wandb.log(
                         {
-                            "global_step": self.curr_iter,
+                            "Iter": self.curr_iter,
                             f"train_batch/{key}": self.trainer.storage.history(key).val,
                         },
                         step=wandb.run.step,
@@ -227,7 +227,7 @@ class InformationWriter(HookBase):
                     wandb_dict[f"train/{key}"] = self.trainer.storage.history(key).avg
                 if epoch_miou is not None:
                     wandb_dict["train/mIoU"] = float(epoch_miou)
-                wandb.log(wandb_dict, step=wandb.run.step)
+                wandb.log(wandb_dict, step=self.trainer.epoch + 1)
 
 
 @HOOKS.register_module()

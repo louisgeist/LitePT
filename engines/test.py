@@ -338,26 +338,19 @@ class SemSegTester(TesterBase):
                         accuracy=accuracy_class[i],
                     )
                 )
-            logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
-            if self.cfg.enable_wandb:
-                wandb.log(
-                    {
-                        "test/mIoU": mIoU,
-                        "test/mAcc": mAcc,
-                        "test/allAcc": allAcc,
-                    },
-                    step=wandb.run.step,
-                )
-
+            # Optional logging to Weights & Biases for test metrics (PointCept style)
+            if getattr(self.cfg, "enable_wandb", False):
+                log_dict = {
+                    "test/mIoU": float(mIoU),
+                    "test/mAcc": float(mAcc),
+                    "test/allAcc": float(allAcc),
+                }
                 for i in range(self.cfg.data.num_classes):
-                    wandb.log(
-                        {
-                            f"test/cls_{i}-{self.cfg.data.names[i]} IoU": iou_class[
-                                i
-                            ],
-                        },
-                        step=wandb.run.step,
-                    )
+                    cls_name = self.cfg.data.names[i]
+                    log_dict[f"test/iou_{cls_name}"] = float(iou_class[i])
+                    log_dict[f"test/acc_{cls_name}"] = float(accuracy_class[i])
+                wandb.log(log_dict)
+            logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
 
     @staticmethod
     def collate_fn(batch):
@@ -721,27 +714,19 @@ class SemSegTester_Assemble(TesterBase_Assemble):
                         accuracy=accuracy_class[i],
                     )
                 )
-            logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
-
-            if self.cfg.enable_wandb:
-                wandb.log(
-                    {
-                        "test/mIoU": mIoU,
-                        "test/mAcc": mAcc,
-                        "test/allAcc": allAcc,
-                    },
-                    step=wandb.run.step,
-                )
-
+            # Optional logging to Weights & Biases for test metrics (PointCept style)
+            if getattr(self.cfg, "enable_wandb", False):
+                log_dict = {
+                    "test/mIoU": float(mIoU),
+                    "test/mAcc": float(mAcc),
+                    "test/allAcc": float(allAcc),
+                }
                 for i in range(self.cfg.data.num_classes):
-                    wandb.log(
-                        {
-                            f"test/cls_{i}-{self.cfg.data.names[i]} IoU": iou_class[
-                                i
-                            ],
-                        },
-                        step=wandb.run.step,
-                    )
+                    cls_name = self.cfg.data.names[i]
+                    log_dict[f"test/iou_{cls_name}"] = float(iou_class[i])
+                    log_dict[f"test/acc_{cls_name}"] = float(accuracy_class[i])
+                wandb.log(log_dict)
+            logger.info("<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<")
 
     @staticmethod
     def collate_fn(batch):
