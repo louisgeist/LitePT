@@ -96,7 +96,7 @@ else
   RESUME=false
   mkdir -p "$MODEL_DIR" "$CODE_DIR"
   # cp -r scripts tools pointcept "$CODE_DIR"
-  cp -r scripts tools configs datasets engines metrics models utils litept "$CODE_DIR"
+  cp -r scripts tools configs datasets engines metrics models utils litept libs "$CODE_DIR"
 fi
 
 echo "Loading config in:" $CONFIG_DIR
