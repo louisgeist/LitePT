@@ -158,7 +158,6 @@ class SemSegTester(TesterBase):
             fragment_list = data_dict.pop("fragment_list")
             segment = data_dict.pop("segment")
             data_name = data_dict.pop("name")
-            print(f"Rank {comm.get_rank()}, Data {data_name}")
             pred_save_path = os.path.join(save_path, "{}_pred.npy".format(data_name))
             if os.path.isfile(pred_save_path):
                 logger.info(
@@ -171,6 +170,8 @@ class SemSegTester(TesterBase):
                     segment = data_dict["origin_segment"]
             else:
                 pred = torch.zeros((segment.size, self.cfg.data.num_classes)).cuda()
+                # Single-fragment mode: one point per voxel, broadcast via inverse
+                use_voxel_broadcast = "inverse" in fragment_list[0]
                 for i in range(len(fragment_list)):
                     fragment_batch_size = 1
                     s_i, e_i = i * fragment_batch_size, min(
@@ -186,10 +187,19 @@ class SemSegTester(TesterBase):
                         pred_part = F.softmax(pred_part, -1)
                         if self.cfg.empty_cache:
                             torch.cuda.empty_cache()
-                        bs = 0
-                        for be in input_dict["offset"]:
-                            pred[idx_part[bs:be], :] += pred_part[bs:be]
-                            bs = be
+                        if use_voxel_broadcast:
+                            inv = fragment_list[s_i:e_i][0]["inverse"]
+                            inv = (
+                                torch.from_numpy(inv).long().cuda()
+                                if isinstance(inv, np.ndarray)
+                                else inv.long().cuda()
+                            )
+                            pred += pred_part[inv, :]
+                        else:
+                            bs = 0
+                            for be in input_dict["offset"]:
+                                pred[idx_part[bs:be], :] += pred_part[bs:be]
+                                bs = be
 
                     logger.info(
                         "Test: {}/{}-{data_name}, Batch: {batch_idx}/{batch_num}".format(
@@ -530,7 +540,6 @@ class SemSegTester_Assemble(TesterBase_Assemble):
             fragment_list = data_dict.pop("fragment_list")
             segment = data_dict.pop("segment")
             data_name = data_dict.pop("name")
-            print(f"Rank {comm.get_rank()}, Data {data_name}")
             pred_save_path = os.path.join(save_path, "{}_pred.npy".format(data_name))
             if os.path.isfile(pred_save_path):
                 logger.info(
@@ -543,6 +552,8 @@ class SemSegTester_Assemble(TesterBase_Assemble):
                     segment = data_dict["origin_segment"]
             else:
                 pred = torch.zeros((segment.size, self.cfg.data.num_classes)).cuda()
+                # Single-fragment mode: one point per voxel, broadcast via inverse
+                use_voxel_broadcast = "inverse" in fragment_list[0]
                 for i in range(len(fragment_list)):
                     fragment_batch_size = 1
                     s_i, e_i = i * fragment_batch_size, min(
@@ -562,10 +573,19 @@ class SemSegTester_Assemble(TesterBase_Assemble):
                         pred_part = F.softmax(pred_all, -1)
                         if self.cfg.empty_cache:
                             torch.cuda.empty_cache()
-                        bs = 0
-                        for be in input_dict["offset"]:
-                            pred[idx_part[bs:be], :] += pred_part[bs:be]
-                            bs = be
+                        if use_voxel_broadcast:
+                            inv = fragment_list[s_i:e_i][0]["inverse"]
+                            inv = (
+                                torch.from_numpy(inv).long().cuda()
+                                if isinstance(inv, np.ndarray)
+                                else inv.long().cuda()
+                            )
+                            pred += pred_part[inv, :]
+                        else:
+                            bs = 0
+                            for be in input_dict["offset"]:
+                                pred[idx_part[bs:be], :] += pred_part[bs:be]
+                                bs = be
 
                     logger.info(
                         "Test: {}/{}-{data_name}, Batch: {batch_idx}/{batch_num}".format(
