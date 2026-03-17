@@ -9,6 +9,7 @@ from .structure3d import Structured3DDataset
 # outdoor scene
 from .nuscenes import NuScenesDataset
 from .waymo import WaymoDataset
+from .flair3d import Flair3DDataset
 
 # dataloader
 from .dataloader import MultiDatasetDataloader
