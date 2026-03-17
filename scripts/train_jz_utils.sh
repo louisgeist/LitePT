@@ -1,12 +1,17 @@
 #!/bin/sh
 
+# Copied from train.sh, adapted to work with repo `jz_utils` for cluster job submission.
+
 cd $(dirname $(dirname "$0")) || exit
 ROOT_DIR=$(pwd)
 PYTHON=python
 
 TRAIN_CODE=train.py
 
-DATASET=scannet
+# In `train.sh`, the variable DATASET is used to determine:
+# - the experiment directory - which is NOT used in `jz_utils`, as it is the log_dir
+# - the config file - which is NOT used in `jz_utils`, to simplify the writing and submitting of jobs.
+DATASET=scannet 
 CONFIG="None"
 EXP_NAME=debug
 WEIGHT="None"
@@ -22,6 +27,7 @@ while getopts "p:d:c:n:w:g:m:r:" opt; do
       PYTHON=$OPTARG
       ;;
     d)
+      echo "Note that with `train_jz_utils.sh`, giving a dataset argument with `-d` has no effect" >&2
       DATASET=$OPTARG
       ;;
     c)
@@ -55,7 +61,7 @@ fi
 
 echo "Experiment name: $EXP_NAME"
 echo "Python interpreter dir: $PYTHON"
-echo "Dataset: $DATASET"
+# echo "Dataset: $DATASET"
 echo "Config: $CONFIG"
 echo "GPU Num: $NUM_GPU"
 echo "Machine Num: $NUM_MACHINE"
@@ -63,22 +69,21 @@ echo "Machine Num: $NUM_MACHINE"
 if [ -n "$SLURM_NODELIST" ]; then
   MASTER_HOSTNAME=$(scontrol show hostname "$SLURM_NODELIST" | head -n 1)
   MASTER_ADDR=$(getent hosts "$MASTER_HOSTNAME" | awk '{ print $1 }')
-  MASTER_PORT=$((10000 + 0x$(echo -n "${DATASET}/${EXP_NAME}" | md5sum | cut -c 1-4 | awk '{print $1}') % 20000))
+  MASTER_PORT=$((10000 + 0x$(echo -n "${EXP_NAME}" | md5sum | cut -c 1-4 | awk '{print $1}') % 20000))
   DIST_URL=tcp://$MASTER_ADDR:$MASTER_PORT
 fi
 
-echo "Master addr: $MASTER_ADDR"
-echo "Master port: $MASTER_PORT"
 echo "Dist URL: $DIST_URL"
 
-export MASTER_ADDR=$MASTER_ADDR
-export MASTER_PORT=$MASTER_PORT
-# Use JOB_DIR if set (e.g. by sbatch to put exp inside logs/slurm/%j/), else default
-EXP_DIR=exp/${DATASET}/${EXP_NAME}
-[ -n "${JOB_DIR}" ] && EXP_DIR=${JOB_DIR}
+# train_jz_utils.sh expects JOB_DIR (set by sbatch wrapper) so exp lives under logs/slurm/%j/
+if [ -z "${JOB_DIR}" ]; then
+  echo "Error: JOB_DIR is not set. Run this script via your jz_utils sbatch wrapper, which exports JOB_DIR." >&2
+  exit 1
+fi
+EXP_DIR=${JOB_DIR}
 MODEL_DIR=${EXP_DIR}/model
 CODE_DIR=${EXP_DIR}/code
-CONFIG_DIR=configs/${DATASET}/${CONFIG}.py
+CONFIG_DIR=configs/experiment/${CONFIG}
 
 
 echo " =========> CREATE EXP DIR <========="
@@ -90,11 +95,12 @@ then
 else
   RESUME=false
   mkdir -p "$MODEL_DIR" "$CODE_DIR"
+  # cp -r scripts tools pointcept "$CODE_DIR"
   cp -r scripts tools configs datasets engines metrics models utils litept "$CODE_DIR"
 fi
 
 echo "Loading config in:" $CONFIG_DIR
-# Use absolute path so Python finds modules when CODE_DIR is under JOB_DIR.
+# Use absolute path so Python finds pointcept when CODE_DIR is under logs/slurm/%j/
 export PYTHONPATH=$(cd "$CODE_DIR" && pwd)
 echo "Running code in: $CODE_DIR"
 
@@ -105,6 +111,8 @@ ulimit -n 65536
 OPTS="save_path=$EXP_DIR"
 [ -n "${EXTRA_OPTIONS-}" ] && OPTS="$OPTS $EXTRA_OPTIONS"
 
+# Note that `--num-gpus` is need to be passed, even if it was already set in the config file, because the `default_argument_parser` expects it to be passed
+# and overrides it anyway
 if [ "${WEIGHT}" = "None" ]
 then
     $PYTHON "$CODE_DIR"/tools/$TRAIN_CODE \
@@ -121,5 +129,5 @@ else
     --num-machines "$NUM_MACHINE" \
     --machine-rank ${SLURM_NODEID:-0} \
     --dist-url ${DIST_URL} \
-    --options $OPTS resume="$RESUME" weight="$WEIGHT"
+    --options save_path="$EXP_DIR" resume="$RESUME" weight="$WEIGHT"
 fi
