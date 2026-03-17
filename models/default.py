@@ -31,7 +31,10 @@ class DefaultSegmentor(nn.Module):
         # train
         if self.training:
             loss = self.criteria(seg_logits, input_dict["segment"])
-            return dict(loss=loss)
+            return_dict = dict(loss=loss)
+            with torch.no_grad():
+                return_dict["pred"] = seg_logits.argmax(dim=1)
+            return return_dict
         # eval
         elif "segment" in input_dict.keys():
             loss = self.criteria(seg_logits, input_dict["segment"])
@@ -89,6 +92,8 @@ class DefaultSegmentorV2(nn.Module):
         if self.training:
             loss = self.criteria(seg_logits, input_dict["segment"])
             return_dict["loss"] = loss
+            with torch.no_grad():
+                return_dict["pred"] = seg_logits.argmax(dim=1)
         # eval
         elif "segment" in input_dict.keys():
             loss = self.criteria(seg_logits, input_dict["segment"])

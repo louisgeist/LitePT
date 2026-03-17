@@ -25,6 +25,7 @@ import utils.comm as comm
 
 from .default import HookBase
 from .builder import HOOKS
+from utils.misc import intersection_and_union_gpu
 
 
 AMP_DTYPE = dict(
@@ -85,9 +86,12 @@ class IterationTimer(HookBase):
 
 @HOOKS.register_module()
 class InformationWriter(HookBase):
-    def __init__(self):
+    def __init__(self, log_train_miou=False):
         self.curr_iter = 0
         self.model_output_keys = []
+        self.log_train_miou = log_train_miou
+        self._train_intersection = None
+        self._train_union = None
 
     def before_train(self):
         self.trainer.comm_info["iter_info"] = ""
@@ -117,9 +121,40 @@ class InformationWriter(HookBase):
     def after_step(self):
         if "model_output_dict" in self.trainer.comm_info.keys():
             model_output_dict = self.trainer.comm_info["model_output_dict"]
-            self.model_output_keys = model_output_dict.keys()
-            for key in self.model_output_keys:
-                self.trainer.storage.put_scalar(key, model_output_dict[key].item())
+            scalar_keys = []
+            for key, value in model_output_dict.items():
+                if isinstance(value, torch.Tensor):
+                    if value.numel() != 1:
+                        continue
+                    value = value.item()
+                if not isinstance(value, (int, float)):
+                    continue
+                self.trainer.storage.put_scalar(key, float(value))
+                scalar_keys.append(key)
+            self.model_output_keys = scalar_keys
+
+            # Optional epoch-level train mIoU (rank 0 only, not reduced across GPUs).
+            if (
+                self.log_train_miou
+                and comm.is_main_process()
+                and "pred" in model_output_dict
+                and "input_dict" in self.trainer.comm_info
+                and "segment" in self.trainer.comm_info["input_dict"]
+            ):
+                with torch.no_grad():
+                    pred = model_output_dict["pred"]
+                    target = self.trainer.comm_info["input_dict"]["segment"]
+                    num_classes = int(self.trainer.cfg.data.num_classes)
+                    ignore_index = int(self.trainer.cfg.data.ignore_index)
+                    area_intersection, area_union, _ = intersection_and_union_gpu(
+                        pred.clone(), target, num_classes, ignore_index
+                    )
+                    if self._train_intersection is None:
+                        self._train_intersection = area_intersection.detach()
+                        self._train_union = area_union.detach()
+                    else:
+                        self._train_intersection += area_intersection.detach()
+                        self._train_union += area_union.detach()
 
         for key in self.model_output_keys:
             self.trainer.comm_info["iter_info"] += "{key}: {value:.4f} ".format(
@@ -165,6 +200,16 @@ class InformationWriter(HookBase):
             epoch_info += "{key}: {value:.4f} ".format(
                 key=key, value=self.trainer.storage.history(key).avg
             )
+        epoch_miou = None
+        if self.log_train_miou and self._train_intersection is not None and self._train_union is not None:
+            intersection = self._train_intersection
+            union = self._train_union
+            valid = union > 0
+            if valid.any():
+                epoch_miou = (intersection[valid] / (union[valid] + 1e-10)).mean().item()
+            else:
+                epoch_miou = 0.0
+            epoch_info += "mIoU: {:.4f} ".format(epoch_miou)
         self.trainer.logger.info(epoch_info)
         if self.trainer.writer is not None:
             for key in self.model_output_keys:
@@ -173,17 +218,16 @@ class InformationWriter(HookBase):
                     self.trainer.storage.history(key).avg,
                     self.trainer.epoch + 1,
                 )
+            if epoch_miou is not None:
+                self.trainer.writer.add_scalar("train/mIoU", float(epoch_miou), self.trainer.epoch + 1)
 
             if self.trainer.cfg.enable_wandb:
-
+                wandb_dict = {"epoch": self.trainer.epoch + 1}
                 for key in self.model_output_keys:
-                    wandb.log(
-                        {
-                            "epoch": self.trainer.epoch + 1,
-                            f"train/{key}": self.trainer.storage.history(key).avg,
-                        },
-                        step=wandb.run.step,
-                    )
+                    wandb_dict[f"train/{key}"] = self.trainer.storage.history(key).avg
+                if epoch_miou is not None:
+                    wandb_dict["train/mIoU"] = float(epoch_miou)
+                wandb.log(wandb_dict, step=wandb.run.step)
 
 
 @HOOKS.register_module()
