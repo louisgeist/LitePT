@@ -136,7 +136,7 @@ data = dict(
             
             dict(
                 type="GridSample",
-                grid_size=0.02,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,
