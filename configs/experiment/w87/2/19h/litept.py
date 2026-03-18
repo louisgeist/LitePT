@@ -13,7 +13,7 @@ point_max = 102400 #LitePT : 102400 - test 204800 as in PTv3 ?
 num_gpu = 4
 epoch = 800
 eval_epoch = epoch//10
-lr = 6e-4 #LitePT : 6e-3
+lr = 2e-3 #LitePT waymo : lr=0.002
 patch_size = 1024 #LitePT : 1024
 
 # Specific things I setted
@@ -27,8 +27,6 @@ num_worker = 6*num_gpu
 mix_prob = 0.8
 empty_cache = False
 enable_amp = True
-
-clip_grad = 1.0 #LitePT specific
 
 
 # Hooks
@@ -52,20 +50,20 @@ model = dict(
     backbone_out_channels=72,
     backbone=dict(
     type="LitePT",
-        in_channels=3,
+        in_channels=6, # coords + RGB
         order=("z", "z-trans", "hilbert", "hilbert-trans"),
         stride=(2, 2, 2, 2),
         enc_depths=(2, 2, 2, 6, 2),
         enc_channels=(36, 72, 144, 252, 504),
         enc_num_head=(2, 4, 8, 14, 28),
-        enc_patch_size=(1024, 1024, 1024, 1024, 1024),
+        enc_patch_size=(patch_size, patch_size, patch_size, patch_size, patch_size),
         enc_conv=(True, True, True, False, False),
         enc_attn=(False, False, False, True, True),
         enc_rope_freq=(100.0, 100.0, 100.0, 100.0, 100.0),
         dec_depths=(0, 0, 0, 0),
         dec_channels=(72, 72, 144, 252),
         dec_num_head=(4, 4, 8, 14),
-        dec_patch_size=(1024, 1024, 1024, 1024),
+        dec_patch_size=(patch_size, patch_size, patch_size, patch_size),
         dec_conv=(False, False, False, False),
         dec_attn=(False, False, False, False),
         dec_rope_freq=(100.0, 100.0, 100.0, 100.0),
@@ -86,11 +84,11 @@ model = dict(
 )
 
 # scheduler settings
-optimizer = dict(type="AdamW", lr=lr, weight_decay=0.05)
+optimizer = dict(type="AdamW", lr=lr, weight_decay=0.005)
 scheduler = dict(
     type="OneCycleLR",
     max_lr=[lr, lr/10],
-    pct_start=0.05,
+    pct_start=0.04,
     anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=1000.0,
@@ -122,36 +120,39 @@ data = dict(
         data_root=data_root,
         transform=[
             dict(type="CenterShift", apply_z=True),
-            dict(
-                type="RandomDropout", dropout_ratio=0.2, dropout_application_ratio=0.2
-            ),
-            dict(type="RandomRotate", angle=[-1, 1], axis="z", center=[0, 0, 0], p=0.5),
+            dict(type="RandomDropout", dropout_ratio=0.2, dropout_application_ratio=0.2),
+            dict(type="RandomRotate", angle=[-1, 1], axis="z", center=[0, 0, 0], p=0.5), # as waymo/nuscences
             dict(type="RandomRotate", angle=[-1 / 64, 1 / 64], axis="x", p=0.5),
             dict(type="RandomRotate", angle=[-1 / 64, 1 / 64], axis="y", p=0.5),
-            dict(type="RandomScale", scale=[0.9, 1.1]),
-            dict(type="RandomFlip", p=0.5),
-            dict(type="RandomJitter", sigma=0.005, clip=0.02),
-            dict(type="ElasticDistortion", distortion_params=[[0.2, 0.4], [0.8, 1.6]]),
+            dict(type="RandomScale", scale=[0.9, 1.1]),                                 # as waymo/nuscences
+            dict(type="RandomFlip", p=0.5),                                             # as waymo/nuscences
+            dict(type="RandomJitter", sigma=0.005, clip=0.02),                          # as waymo/nuscences
+            # dict(type="ElasticDistortion", distortion_params=[[0.2, 0.4], [0.8, 1.6]]),
+            
+            # Chromatic augmentations
             dict(type="ChromaticAutoContrast", p=0.2, blend_factor=None),
             dict(type="ChromaticTranslation", p=0.95, ratio=0.05),
             dict(type="ChromaticJitter", p=0.95, std=0.05),
+            
             dict(
                 type="GridSample",
                 grid_size=0.02,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,
-            ),
+            ), # as waymo/nuscences
+            
             dict(type="SphereCrop", point_max=point_max, mode="random"),
             dict(type="CenterShift", apply_z=False),
             dict(type="NormalizeColor"),
-            dict(type="ToTensor"),
-            dict(type="Update", keys_dict={"grid_size": grid_size}),
+            
+            dict(type="ToTensor"),                                                      # as waymo/nuscences
+            dict(type="Update", keys_dict={"grid_size": grid_size}),                    # as waymo/nuscences
             dict(
                 type="Collect",
                 keys=("coord", "grid_coord", "segment", "grid_size"),
-                feat_keys=("color",), # "normal"), # compared to LitePT, remove "normal"
-            ),
+                feat_keys=("color","coord"), # "normal"), # compared to LitePT, remove "normal"
+            ),                                                                          # as waymo/nuscences
         ],
         test_mode=False,
     ),
@@ -176,7 +177,7 @@ data = dict(
             dict(
                 type="Collect",
                 keys=("coord", "grid_coord", "segment", "origin_segment", "inverse"),
-                feat_keys=("color",), # "normal"),
+                feat_keys=("color", "coord"), # "normal"),
             ),
         ],
         test_mode=False,
@@ -207,7 +208,7 @@ data = dict(
                     type="Collect",
                     keys=("coord", "grid_coord", "index"),
                     optional_keys=("inverse",),  # for test_single_fragment broadcast
-                    feat_keys=("color",), # "normal"),
+                    feat_keys=("color", "coord"), # "normal"),
                 ),
             ],
             aug_transform=[
