@@ -145,6 +145,25 @@ class OneCycleLR(lr_scheduler.OneCycleLR):
         )
 
 
+@SCHEDULERS.register_module()
+class LinearLR(lr_scheduler.LinearLR):
+    def __init__(
+        self,
+        optimizer,
+        start_factor=1.0 / 3,
+        end_factor=1.0,
+        total_iters=5,
+        last_epoch=-1,
+        total_steps=None, # useless, just for compatibility with configs
+    ):
+        super().__init__(
+            optimizer=optimizer,
+            start_factor=start_factor,
+            end_factor=end_factor,
+            total_iters=total_iters,
+            last_epoch=last_epoch,
+        )
+
 class CosineScheduler(object):
     def __init__(
         self,
