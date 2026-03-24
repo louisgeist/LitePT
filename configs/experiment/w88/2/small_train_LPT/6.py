@@ -3,7 +3,7 @@ _base_ = ["../../../../_base_/default_runtime.py"] # level experiment/wXX/DD/sub
 # Configs
 # wandb_run_name -> to define at the end of the file
 
-num_exp = 1
+num_exp = 6
 # label definition: inter_finerall6 
 num_classes = 8
 ignore_index = 8
@@ -14,7 +14,7 @@ point_max = 102400 #LitePT : 102400 - test 204800 as in PTv3 ?
 num_gpu = 1
 epoch = 100
 eval_epoch = epoch//10
-lr = 2e-3 #LitePT waymo : lr=0.002
+lr = 2e-5 #LitePT waymo : lr=0.002
 warmup_steps = 5000
 patch_size = 1024 #LitePT : 1024
 
@@ -23,7 +23,7 @@ test_single_fragment = True
 tta = False # no TTA (cf. aug_transform)
 
 # misc custom setting
-batch_size_per_gpu = 12
+batch_size_per_gpu = 16
 batch_size = batch_size_per_gpu * num_gpu
 num_worker = 8 * num_gpu
 mix_prob = 0.8
