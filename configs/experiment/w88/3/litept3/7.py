@@ -156,7 +156,7 @@ data = dict(
             dict(
                 type="Collect",
                 keys=("coord", "grid_coord", "segment", "grid_size"),
-                feat_keys=("color",), # "normal"), # compared to LitePT, remove "normal"
+                feat_keys=["color"], # "normal"), # compared to LitePT, remove "normal"
             ),                                                                          # as waymo/nuscences
         ],
         test_mode=False,
@@ -182,7 +182,7 @@ data = dict(
             dict(
                 type="Collect",
                 keys=("coord", "grid_coord", "segment", "origin_segment", "inverse"),
-                feat_keys=("color",), # "normal"),
+                feat_keys=["color"], # "normal"),
             ),
         ],
         test_mode=False,
@@ -213,7 +213,7 @@ data = dict(
                     type="Collect",
                     keys=("coord", "grid_coord", "index"),
                     optional_keys=("inverse",),  # for test_single_fragment broadcast
-                    feat_keys=("color",), # "normal"),
+                    feat_keys=["color"], # "normal"),
                 ),
             ],
             aug_transform=[
